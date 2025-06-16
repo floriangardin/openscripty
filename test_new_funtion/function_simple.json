@@ -1,0 +1,19 @@
+{
+  "properties": {
+    "a": {
+      "title": "A",
+      "type": "integer"
+    },
+    "b": {
+      "title": "B",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "a",
+    "b"
+  ],
+  "title": "run_args",
+  "type": "object",
+  "additionalProperties": false
+}
