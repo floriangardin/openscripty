@@ -64,7 +64,7 @@ class FileService:
     @staticmethod
     def get_file_directory(workspace_id: str):
         """
-        Get the directory for a script.
+        Get the workspace directory
         Args:
             workspace_id: The id of the conversation.
         """

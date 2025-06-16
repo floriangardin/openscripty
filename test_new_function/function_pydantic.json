@@ -1,0 +1,40 @@
+{
+  "schema": {
+    "$defs": {
+      "Point": {
+        "description": "A point with a longitude and latitude",
+        "properties": {
+          "long": {
+            "description": "The longitude of the point",
+            "title": "Long",
+            "type": "number"
+          },
+          "lat": {
+            "description": "The latitude of the point",
+            "title": "Lat",
+            "type": "number"
+          }
+        },
+        "required": [
+          "long",
+          "lat"
+        ],
+        "title": "Point",
+        "type": "object",
+        "additionalProperties": false
+      }
+    },
+    "properties": {
+      "point": {
+        "$ref": "#/$defs/Point"
+      }
+    },
+    "required": [
+      "point"
+    ],
+    "title": "run_args",
+    "type": "object",
+    "additionalProperties": false
+  },
+  "docstring": "\nThis function takes a long,lat point and return the distance to the equator in km\nArgs:\n    point: A point with a longitude and latitude\nReturns:\n    distance: The distance to the equator in km\n"
+}

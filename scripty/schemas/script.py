@@ -2,9 +2,8 @@
 This module contains the schemas for the scripty api.
 """
 
-from typing import List, Optional, Dict, Any
+from typing import Optional, Dict, Any
 from pydantic import BaseModel, Field, ConfigDict
-from scripty.models.script import ScriptInput, ScriptOutput
 
 
 class ScriptCreateNoCode(BaseModel):
@@ -13,10 +12,8 @@ class ScriptCreateNoCode(BaseModel):
     """
     name: str = Field(..., description="The name of the script, named like a python function (snake case)")
     description: str = Field(
-        ..., description="Full documentation of the script, what it should be doing"
+        ..., description="Full documentation of the script, what it should be doing what are inputs and outputs"
     )
-    inputs: List[ScriptInput] = Field(..., description="The inputs of the script")
-    outputs: List[ScriptOutput] = Field(..., description="The outputs of the script")
 
 class ScriptCreate(ScriptCreateNoCode):
     """
@@ -45,8 +42,14 @@ class ScriptRead(BaseModel):
     description: str = Field(
         ..., description="Full documentation of the script, what it should be doing"
     )
-    inputs: List[ScriptInput] = Field(..., description="The inputs of the script")
-    outputs: List[ScriptOutput] = Field(..., description="The outputs of the script")
+    inputs: dict | None = Field(
+        None,
+        description="The inputs of the script, if it exists as an openapi schema",
+    )
+    outputs: dict | None = Field(
+        None,
+        description="The outputs of the script, if it exists as an openapi schema",
+    )
 
 
 class RunScriptByName(BaseModel):

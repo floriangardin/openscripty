@@ -7,48 +7,81 @@ import tempfile
 import re
 import os
 import asyncio
+from pydantic import TypeAdapter, ValidationError
 
 from sqlalchemy.orm import Session
-from scripty.models.script import ArgumentType, Script
+from scripty.models.script import Script
 from scripty.schemas.tester import TestResult
 from scripty.services.files import FileService
 from scripty.services.script import ScriptService   
 import jinja2
 
 CODE_WRAPPER_TEMPLATE = jinja2.Template("""
-import logging
-import argparse
 import json
 import sys
-import os
-import requests
+from agents.function_schema import function_schema
+from pydantic import BaseModel
+from typing import Callable, TypeVar, Type, Any, get_type_hints
+from functools import wraps
+import inspect
 
-logger = logging.getLogger(__name__)
+T = TypeVar('T', bound=BaseModel)
 
-def execute_script(name: str, inputs: dict) -> dict:
-    result = requests.post("{{api_url}}/scripts/run", json={"script_name": name, "inputs": inputs})
-    if result.status_code != 200:
-        raise ValueError(f"Error executing tool {name}: {result.text}")
-    return result.json()
+def convert_to_model(data: Any, model_type: Type[BaseModel]) -> BaseModel:
+    '''Helper function to convert data to a Pydantic model.'''
+    if isinstance(data, model_type):
+        return data
+    if isinstance(data, dict):
+        # If the data is a nested dict with a key matching the model name (case-insensitive)
+        model_name = model_type.__name__.lower()
+        for key, value in data.items():
+            if key.lower() == model_name and isinstance(value, dict):
+                return model_type(**value)
+        # If no matching key found, try to use the dict directly
+        return model_type(**data)
+    return data
 
+def pydantic_auto_convert(func: Callable) -> Callable:
+    '''
+    Decorator that automatically converts dictionary inputs to Pydantic models based on type hints.
+    Expects a single dictionary argument containing all parameters.
+    '''
+    @wraps(func)
+    def wrapper(data: dict, **kwargs):
+        sig = inspect.signature(func)
+        type_hints = get_type_hints(func)
+        new_kwargs = {}
+        
+        # Process each parameter
+        for param_name, param in sig.parameters.items():
+            param_type = type_hints.get(param_name)
+            
+            if param_type and issubclass(param_type, BaseModel):
+                # Handle Pydantic model parameters
+                new_kwargs[param_name] = convert_to_model(data, param_type)
+            elif param_name in data:
+                # Handle regular parameters
+                new_kwargs[param_name] = data[param_name]
+            elif param.default is not inspect.Parameter.empty:
+                # Use default value if available
+                new_kwargs[param_name] = param.default
+            else:
+                # Required parameter not found
+                raise ValueError(f"Missing required argument: {param_name}")
+        
+        return func(**new_kwargs)
+    return wrapper
 
-inputs = sys.argv[1]
-outputs = sys.argv[2]
-# Transform args into a event dictionary like in a lambda function
-event = json.loads(inputs)
-output = json.loads(outputs)
-
-# Main script code begins here
 {{code}}
-                                 
-# Convert output to json
-output = json.dumps(output)
-# Print output
-print('<$output>')
-print(output)
-print('</$output>')
-# TODO: Save FILE & JSON outputs to files and remove them from the output dictionary
+result = pydantic_auto_convert(run)(json.loads(sys.argv[1]))
+
+# Wrap the result in a pydantic model to be able to serialize it to json
+from typing import Any
+class Wrapper(BaseModel):
+    wrapped: Any
+print('<$output>', json.dumps(Wrapper(wrapped=result).model_dump()['wrapped']), '</$output>')                                
 """)
+
 
 TEST_WRAPPER_TEMPLATE = jinja2.Template("""
 import sys
@@ -104,48 +137,15 @@ class CodeExecutorService:
         Returns:
             The script outputs.
         """
-        inputs_data = script.inputs
-        outputs_data = script.outputs
         code = script.code
-        outputs = {v.name: v.filepath for v in outputs_data}
-        full_code = CODE_WRAPPER_TEMPLATE.render(code=code, api_url=os.getenv("API_URL"))
+        full_code = CODE_WRAPPER_TEMPLATE.render(code=code)
 
-        errors = []
-        for input_data in inputs_data:
-            if inputs.get(input_data.name) is None:
-                errors.append(f"{input_data.name} value is not set")
-                continue
-            if input_data.type == ArgumentType.FILE:
-                if not os.path.exists(os.path.join(
-                    FileService.get_file_directory(workspace_id),
-                    inputs.get(input_data.name),
-                )):
-                    errors.append(f"File {input_data.value} not found, maybe the user didn't upload it yet.")
-        
-        if len(errors) > 0:
-            raise ValueError("Some input validation errors occured : \n" + "\n".join(errors))
-            
         # Execute the code asynchronously
-        result = await asyncio.create_subprocess_exec(
-            PYTHON_EXECUTABLE,
-            "-c",
-            full_code,
-            json.dumps(inputs),
-            json.dumps(outputs),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=FileService.get_file_directory(workspace_id),
-        )
-        stdout, stderr = await result.communicate()
-        out = stdout.decode() if stdout else ""
-        err = stderr.decode() if stderr else ""
-        code = result.returncode
-        if code != 0:
-            raise RuntimeError(f"Error running code: {err}")
-
-        string_output = out.split("<$output>")[1].split("</$output>")[0]
-        outputs_data = json.loads(string_output)
-        return outputs_data
+        result = await CodeExecutorService.execute_code([full_code, json.dumps(inputs)], 
+                                                        start_token="<$output>", 
+                                                        end_token="</$output>", 
+                                                        current_dir=FileService.get_file_directory(workspace_id))
+        return result
     
     @staticmethod
     async def run_code(script: Script, workspace_id: str) -> dict:
@@ -159,6 +159,28 @@ class CodeExecutorService:
         """
         inputs = {v.name: v.value for v in script.inputs}
         return await CodeExecutorService.run_code_with_inputs(script, workspace_id, inputs)
+    
+    @staticmethod
+    async def execute_code(args: list[str], start_token: str="<$output>", end_token: str="</$output>", current_dir: str=None) -> dict:
+        """Execute the code asynchronously"""
+        result = await asyncio.create_subprocess_exec(
+            PYTHON_EXECUTABLE,
+            "-c",
+            *args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=current_dir,
+        )
+        stdout, stderr = await result.communicate()
+        out = stdout.decode() if stdout else ""
+        err = stderr.decode() if stderr else ""
+        code = result.returncode
+        if code != 0:
+            raise RuntimeError(f"Error running code: {err}")
+
+        string_output = out.split(start_token)[1].split(end_token)[0]
+        outputs_data = json.loads(string_output)
+        return outputs_data
     
     @staticmethod
     async def run_test(script: Script) -> TestResult:

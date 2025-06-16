@@ -2,189 +2,126 @@
 The code agent.
 """
 from agents import Agent, RunContextWrapper, function_tool, Runner
+import jinja2
 from jinja2 import Template
 from scripty.schemas import ScriptyContext
 from scripty.models.script import ScriptORM
+from scripty.services.code_executor import CodeExecutorService
 from scripty.tools.script import list_scripts
 from scripty.agents.tester import test_code_with_ai
 
 
 # pylint: disable=line-too-long
-CALLING_SCRIPTS = """You also have access to a special function in your code that allows you to call other scripts as a function :
-```python
-def execute_script(name: str, inputs: dict) -> dict:
-```
-This function takes the name of the script to call and the inputs to pass to the script.
-It returns the output dictionary of the script or raises an error if the script fails.
 
-Here is an example of a script description : 
-```json
-{
-    "name": "String Concatenation",
-    "description": "This script takes two strings as inputs and outputs their concatenation.",
-    "inputs": [
-        {
-            "name": "string_1",
-            "type": "string",
-            "description": "The first string to concatenate.",
-            "value": "Hello, "
-        },
-        {
-            "name": "string_2",
-            "type": "string",
-            "description": "The second string to concatenate.",
-            "value": "World!"
-        }
-    ],
-    "outputs": [
-        {
-            "name": "concatenated_string",
-            "type": "string",
-            "description": "The result of concatenating the two input strings.",
-            "filepath": ""
-        },
-        {
-            "name": "concatenated_string_filepath",
-            "type": "file",
-            "description": "The result of concatenating the two input strings, saved as a text file.",
-            "filepath": "concatenated_string.txt"
-        }
-    ]
-}
-```
-You can call this script by using the following code : 
-```python
-result = execute_script("String Concatenation", {
-    "string_1": "Hello, ",
-    "string_2": "World!"
-})
-```
-It will output the following : 
-```json
-{
-    "concatenated_string": "Hello, World!",
-    "concatenated_string_filepath": "concatenated_string.txt"
-}
-```
-You can then reuse the result of the script in your code. For example : 
-```python
-with open(result["concatenated_string_filepath"], "w") as f:
-    result = f.read()
-```
-
-Be sure to call the `list_scripts` tool to get the list of scripts available to you before creating your code.
-Always reuse existing scripts if possible. Write appropriate adapters if needed.
-"""
-
-INSTRUCTIONS = Template("""You are a Python developer expert tasked with creating a script solving a problem given by the user.
-You have access to the following libraries:
-- all Python standard libraries
-- requests
-- pandas
-
-To use one of the libraries, just import it as you need.
-
-You already have access to two global variables in your script :
-- `event` : A dictionary containing the inputs given by the user. It contains the object except for file inputs where it will be a filepath that you can read using appropriate library.
-- `output` : A dictionary containing the outputs of the script. You are responsible of assigning the values to the output dictionary except for file outputs where it will be a filepath to write the file to.
-
-- For FILE inputs, event["input_name"] will be a filepath that you can read using appropriate library.
-- For everything except FILE inputs, event["input_name"] will be the object itself.
-- For FILE outputs, output["output_name"] will be a filepath to write the file to.
-- For everything except FILE outputs, just assign the variable value to the output dictionary available as the variable "output" (eg: output["output_name"] = "value")
-- You are allowed to implement helper functions and classes but the main logic must be in the main scope (not in a function)
-- Do not use "if __name__ == "__main__"" block, just write the code directly in the main scope (not tabbed), think that your code will be wrapped after you provide it to the user.
-- You must output a single file script, not a multi-file script, the code must be self-contained.
-
-<output_format>
-You will format your answer as the following:
-
-Thoughts: <your thoughts about the code generation>
-Code:
-```python
-<code>
-```<end_code>
-</output_format>
+INSTRUCTIONS = """
+You are an experienced engineer and expert in python and pydantic. The user is asking you to implement something. 
+You generate python code that solves the prompt in a reusable function  called `run`.
 
 <instructions>
-1. End your code with the <end_code> tag otherwise you won't succeed.
-2. All the variables given by the user (inputs) will be available as a variable called "event" in the code.
-3. Don't override the provided `event` variable.
-5. As mentionned above : all file outputs are filepaths. Here are some examples of writing files : 
-6. You don't have access to any other file than the ones provided in the `event` variable. 
-7. You can only write to the files contained in the `output` variable, DON'T TRY TO WRITE ANYWHERE ELSE.
-8. You can call other scripts using the `execute_script` function (see below).
-
-```python
-# Any text example
-with open(output["output_name"], "w") as f:
-    f.write("Hello, world!")
-# csv example 
-df.to_csv(output["output_name"], index=False)
-# Upload the Parquet data using the filepath
-df.to_parquet(output["output_name"], engine='pyarrow')
-```
-5. For all other values that are not files, just assign the value to the output variable (eg for text: output["output_name"] = "value")
-
+1. The function that will be executed is named `run`
+2. You must pass a docstring in the `run` function to describe the function.
+3. Each parameters of the `run` function must be typed with standard python types OR pydantic models, if you forget a type hint you will fail.
+4. You must pass a return type hint to the `run` function, it should be a standard python type OR a pydantic type
+5. If you create custom pydantic models for inputs or outputs, you have to define it first in the script code (before `run` function definition)
+6. You don't create a __main__ block in the script code, it will be wrapped by the backend code
+7. You don't have access to any external library, you must use only standard python types and pydantic models
+8. You will have access to some python libraries (see <available_libraries>)
+9. If you need to write files, always write them in the current directory (base filepath, see examples).
+10. You can create classes and subfunctions in the code that will be called by the `run` function.
+11. As implied by 4. the function input and output parameters must be serializable to json, for example you can't pass a pandas dataframe as a parameter.
+12. Always return the paths of the files you created or modified in the function output.
 </instructions>
 
+<available_libraries>
+- standard python librar
+- pandas 
+- pydantic
+- numpy
+</available_libraries>
+
+<output_format>
+You always format your response in the following format : 
+
+Thoughts : <your thoughts about how to solve the prompt>
+Code : ```python
+<the python script code that solve the prompt>
+```<end_code>
+
+You never forget to enclose your code between ```python and ```<end_code> tags or you will fail.
+</output_format>
+
 <examples>
-<example1>
-User : Here is my brief : 
-Name : Concatenate two text files
-Description : Concatenate the two text files and save the result in the output file
-Inputs : 
-- "Text 1" (Type=file) : First text file
-- "Text 2" (Type=file) : Second text file
-- has_header (Type=bool) : Whether the second csv files has a header
-Outputs : 
-- "Concatenated CSV" (Type=file) : Concatenated CSV file
-- "Error" (Type=bool) : Whether the code has an error
+<example_1_simple>
+User Prompt : I want to create a function that adds two numbers together
 
-Your answer : 
-Thoughts: I need to concatenate the two csv files and save the result in the output file
-Code:
-```python
-
-text1 = open(event["Text 1"], "r").read()
-text2 = open(event["Text 2"], "r").read()
-if event["has_header"]:
-    text = text1 + text2
-else:
-    text = text1 + text2
-with open(output["Concatenated CSV"], "w") as f:
-    f.write(text)
-output["Error"] = False
+Your response : 
+Thoughts : I need to create a function that adds two numbers together, I must type all the parameters and the return type.
+Code : ```python
+def run(a: int, b: int) -> int:
+    '''
+    This function adds two numbers together
+    Args:
+        a: The first number to add
+        b: The second number to add
+    Returns:
+        The sum of the two numbers
+    '''
+    return a + b
 ```<end_code>
-</example1>
+</example_1_simple>
 
-<example2>
-Here is the script brief : 
-Name : Merge CSV files
-Description : Merge the two csv files on the "id" column and save the result in the output file
-Inputs : 
-- "Csv 1" (Type=file) : First CSV file
-- "Csv 2" (Type=file) : Second CSV file
-- has_header (Type=bool) : Whether the second csv files has a header
-Outputs : 
-- "Merged CSV" (Type=file) : Merged CSV file
+<example_2_with_pandas>
+User Prompt : I want to create a function that reads a csv file and save the first 5 rows in a new csv file
 
-Your answer : 
-Thoughts: I need to merge the two csv files on the "id" column and save the result in the output file
-Code:
-```python
-df1 = pd.read_csv(event["Csv 1"])
-df2 = pd.read_csv(event["Csv 2"])
-df_merged = pd.merge(df1, df2, on="id", how="left")
-requests.put(output["Merged CSV"], data=df_merged.to_csv(index=False))
+Your response : 
+Thoughts : I need to read a csv file and save the first 5 rows in a new csv file, I must use the pandas library.
+Code : ```python
+import pandas as pd
+
+def run(file_path: str) -> str:
+    '''
+    This function reads a csv file and save the first 5 rows in a new csv file
+    Args:
+        file_path: The path to the csv file to read
+    Returns:
+        output_file_path: The path to the new csv file
+    '''
+    df = pd.read_csv(file_path)
+    # Write in the current directory
+    df.head(5).to_csv('first_5_rows.csv', index=False)
+    return 'first_5_rows.csv'
 ```<end_code>
-</example2>
+</example_2_with_pandas>
+
+<example_3_with_pydantic>
+User Prompt : I need a function that takes a long,lat point and return the distance to the equator in km
+
+Your response : 
+Thoughts : I need to create a function that takes a long,lat point and return the distance to the equator in km, I must use the pydantic library. The distance only depends on the latitude.
+Code : ```python
+from pydantic import BaseModel
+from pydantic import Field
+import math
+
+class Point(BaseModel):
+    '''
+    A point with a longitude and latitude
+    '''
+    long: float = Field(description="The longitude of the point")
+    lat: float = Field(description="The latitude of the point")
+
+def run(point: Point) -> float:
+    '''
+    This function takes a long,lat point and return the distance to the equator in km
+    '''
+    R = 6371  # Mean Earth radius in kilometers
+    return abs(point.lat) * math.pi / 180 * R
+```<end_code>
+</example_3_with_pydantic>
 </examples>
 
-<calling_scripts>
-{{ calling_scripts }}
-</calling_scripts>
-""")
+You are in charge of implementing the complete code, not just give directions, create the full code that solve the prompt otherwise you will fail.
+"""
 
 # Create user prompt using Jinja template
 # pylint: disable=line-too-long
@@ -193,15 +130,6 @@ USER_PROMPT_TEMPLATE = Template(
 Here is the script brief : 
 Name: {{ script_name }}
 Description: {{ script_description }}
-Inputs: 
-{% for input in script_inputs %}
-- "{{ input.name }}" (Type={{ input.type.value }}) {% if input.type.value == "file" %} (filepath) {% endif %} : {{ input.description }}
-{% endfor %}
-Outputs: 
-{% for output in script_outputs %}
-- "{{ output.name }}" (Type={{ output.type.value }}) {% if output.type.value == "file" %} (filepath) {% endif %} : {{ output.description }}
-{% endfor %}
-
 Additional instructions : 
 {{ input }}
 
@@ -215,6 +143,37 @@ Current code :
 )
 
 TEST = False
+
+
+SIGNATURE_TEMPLATE = jinja2.Template("""
+import json
+from agents.function_schema import function_schema
+from pydantic import BaseModel, TypeAdapter
+import typing
+                             
+{{code}}
+                                     
+def inspect_function(func):
+    output = typing.get_type_hints(run).get('return')
+    output_schema = TypeAdapter(output).json_schema()
+    return {"schema": function_schema(func).params_json_schema, "docstring": func.__doc__, "output_schema": output_schema}
+
+schema = inspect_function(run)
+print('<$output>', json.dumps(schema), '</$output>')
+""")
+
+async def inspect_function(function_code: str) -> dict:
+    """
+    Inspect a function and save the schema to a file
+    Args:
+        function_path: The path to the function to inspect
+    Returns:
+        input_schema: The input schema of the function
+    """
+    rendered_code = SIGNATURE_TEMPLATE.render(code=function_code)
+    output = await CodeExecutorService.execute_code([rendered_code])
+    return output
+
 # pylint: disable=redefined-builtin,broad-exception-caught
 @function_tool
 async def create_code_with_ai(
@@ -235,8 +194,6 @@ async def create_code_with_ai(
         user_prompt = USER_PROMPT_TEMPLATE.render(
             script_name=current_script.name,
             script_description=current_script.description,
-            script_inputs=current_script.inputs,
-            script_outputs=current_script.outputs,
             current_code=current_script.code if current_script.code_generated else None,
             input=input,
         )
@@ -245,11 +202,15 @@ async def create_code_with_ai(
             name="Script code generator",
             model="gpt-4o",
             tools=[list_scripts],
-            instructions=INSTRUCTIONS.render(calling_scripts=CALLING_SCRIPTS),
+            instructions=INSTRUCTIONS,
         )
         result = await Runner.run(agent, input=user_prompt, context=ctx.context)
         code = result.final_output
         code = code.split("```python")[1].split("```<end_code>")[0]
+        inspect_data = await inspect_function(code)
+        input_schema = inspect_data["schema"]
+        output_schema = inspect_data["output_schema"]
+        docstring = inspect_data["docstring"]
 
         # Update the code in the database using the session
         session = ctx.context.session
@@ -259,6 +220,9 @@ async def create_code_with_ai(
         if script_orm:
             script_orm.code = code
             script_orm.touched = True
+            script_orm.inputs = input_schema
+            script_orm.outputs = output_schema
+            script_orm.docstring = docstring
             session.commit()
             session.refresh(script_orm)
         print("Created code :")
@@ -266,17 +230,23 @@ async def create_code_with_ai(
             print(line)
 
         # Create tests
-        test_message = "Created code successfully for the script"
+        result_message = f"""
+        Created code successfully for the script. 
+        Arguments schema : {input_schema} 
+        Outputs : {output_schema}
+        Docstring : {docstring}
+        """
         if TEST:
             test_result = await test_code_with_ai(ctx.context)
             print("Test result :", test_result.success)
             if test_result.success:
-                test_message = "Created and Tested code successfully for the script"
+                test_message = "Tested code successfully."
             else:
-                test_message = "Created code successfully but weren't able to create working tests for the script"
+                test_message = "Weren't able to create working tests."
                 test_message += "\n" + test_result.full_output
+            result_message += "\n" + test_message
 
-        return test_message
+        return result_message
     except Exception as e:
         print(f"Error creating code: {e}")
         return f"Error creating code: {e}"

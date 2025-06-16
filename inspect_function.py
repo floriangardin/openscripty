@@ -2,40 +2,27 @@ import json
 import jinja2
 import asyncio
 import os
+from scripty.services.code_executor import CodeExecutorService
 
 PYTHON_EXECUTABLE = "python"
 signature_template = jinja2.Template("""
 import json
 from agents.function_schema import function_schema
+from pydantic import BaseModel, TypeAdapter
+import typing
+                             
 {{code}}
+                                     
 def inspect_function(func):
-    return {"schema": function_schema(func).params_json_schema, "docstring": func.__doc__}
+    output = typing.get_type_hints(run).get('return')
+    output_schema = TypeAdapter(output).json_schema()
+    return {"schema": function_schema(func).params_json_schema, "docstring": func.__doc__, "output_schema": output_schema}
 
 schema = inspect_function(run)
 print('<$output>', json.dumps(schema), '</$output>')
 """)
 
-async def execute_code(*args, start_token: str, end_token: str, current_dir: str):
-    """Execute the code asynchronously"""
-    result = await asyncio.create_subprocess_exec(
-        PYTHON_EXECUTABLE,
-        "-c",
-        *args,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-        cwd=current_dir,
-    )
-    stdout, stderr = await result.communicate()
-    out = stdout.decode() if stdout else ""
-    print(out)
-    err = stderr.decode() if stderr else ""
-    code = result.returncode
-    if code != 0:
-        raise RuntimeError(f"Error running code: {err}")
 
-    string_output = out.split(start_token)[1].split(end_token)[0]
-    outputs_data = json.loads(string_output)
-    return outputs_data
 
 
 def inspect_function(function_path: str) -> dict:
@@ -49,14 +36,15 @@ def inspect_function(function_path: str) -> dict:
     with open(function_path, 'r', encoding='utf-8') as f:
         function_code = f.read()
     rendered_code = signature_template.render(code=function_code)
-    input_schema = asyncio.run(execute_code(rendered_code, start_token="<$output>", end_token="</$output>", current_dir=os.path.dirname(function_path)))
-    function_name = function_path.split('/')[-1].split('.')[0]
-    with open(os.path.join(os.path.dirname(function_path), f'{function_name}.json'), 'w', encoding='utf-8') as f:
-        json.dump(input_schema, f, indent=2)
-    return input_schema
+    output = asyncio.run(CodeExecutorService.execute_code([rendered_code], start_token="<$output>", end_token="</$output>", current_dir=os.path.dirname(function_path)))
+    return output
 
 if __name__ == "__main__":
-    inspect_function('test_new_funtion/function_pydantic.py')
+    FUNCTION_PATH = 'test_new_function/function_pydantic.py'
+    result = inspect_function(FUNCTION_PATH)
+    function_name = FUNCTION_PATH.split('/')[-1].split('.')[0]
+    with open(os.path.join(os.path.dirname(FUNCTION_PATH), f'{function_name}.json'), 'w', encoding='utf-8') as f:
+        json.dump(result, f, indent=2)
 
 
 
