@@ -12,7 +12,6 @@ from scripty.models.script import (
 )
 from scripty.schemas.script import ScriptCreate, ScriptUpdate
 
-
 class ScriptService:
     """
     Service for handling scripts.
@@ -38,7 +37,6 @@ class ScriptService:
             ).items():
                 if hasattr(script_orm, field):
                     setattr(script_orm, field, value)
-            script_orm.touched = True
             session.commit()
             session.refresh(script_orm)
             return Script.model_validate(script_orm)
@@ -59,7 +57,6 @@ class ScriptService:
             name=script.name,
             code=script.code,
             description=script.description,
-            touched=True,
             )
             session.add(script_orm)
             session.commit()
@@ -104,5 +101,5 @@ class ScriptService:
         Returns:
             A list of scripts.
         """
-        script_orms = session.query(ScriptORM).filter(ScriptORM.touched == True).all()
+        script_orms = session.query(ScriptORM).filter(ScriptORM.touched).all()
         return [Script.model_validate(script_orm) for script_orm in script_orms]

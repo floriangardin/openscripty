@@ -37,7 +37,7 @@ def create_script(
     session: Session = wrapper.context.session
     script = ScriptService.create_script(session, ScriptCreate.model_validate(script.model_dump()))
     wrapper.context.set_current_script_id(script.id)
-    return f"Script {script.name} created"
+    return f"Script named `{script.name}` created"
 
 
 def update_script(
@@ -54,7 +54,7 @@ def update_script(
         if script_id is None:
             raise ValueError("No script id found, create it first")
         script = ScriptService.update_script(session, script_id, ScriptUpdate.model_validate(script.model_dump()))
-        return f"Script {script.name} updated"
+        return f"Script named `{script.name}` updated"
     except Exception as e:
         traceback.print_exc()
         return f"Error updating script: {e}"
@@ -88,10 +88,10 @@ async def list_scripts(wrapper: RunContextWrapper[ScriptyContext]) -> List[Scrip
 @function_tool
 async def switch_script(wrapper: RunContextWrapper[ScriptyContext], script_name: str) -> str:
     """
-    Switch to a different current script.
+    Switch to a different current script, usually used to modify an existing script.
     Args:
         script_name: The name of the script to switch to.
     """
     script = ScriptService.get_script_by_name(wrapper.context.session, script_name)
     wrapper.context.set_current_script_id(script.id)
-    return f"Switched to script {script_name}"
+    return f"Switched to script named `{script_name}`"

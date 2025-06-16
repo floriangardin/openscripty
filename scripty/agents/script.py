@@ -6,7 +6,7 @@ from agents import Agent
 from scripty.schemas import ScriptyContext
 from scripty.tools.files import cat_file, list_files
 from scripty.tools.script import say, create_or_update_script, list_scripts, switch_script
-from scripty.tools.code_executor import execute_code
+from scripty.tools.code_executor import execute_code_with_script_name
 from scripty.agents.code import create_code_with_ai
 from scripty.agents.templates.template_manager import template_manager
 
@@ -21,7 +21,7 @@ def script_agent_factory(context: ScriptyContext) -> Agent[ScriptyContext]:
     tools = [say,
              create_or_update_script,
              create_code_with_ai,
-             execute_code,
+             execute_code_with_script_name,
              cat_file,
              list_files,
              list_scripts,
