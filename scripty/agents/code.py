@@ -183,7 +183,7 @@ async def create_code_with_ai(
     Create a code for the current script using AI.
     Uses the script saved in the database as a spec to generate the code.
     Args:
-        input: The prompt given to the code generator. Use it to pass additional information or errors from previous execution to debug the previous code.
+        input: The prompt given to the code generator. Use it to pass additional information or errors from previous execution to debug the previous code. Don't confuse code creation and execution : pass the prompt to create a generic function here, and then use the execute_code tool to execute the code with appropriate inputs.
     Returns:
         The code for the script.
     """

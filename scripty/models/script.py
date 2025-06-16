@@ -2,8 +2,6 @@
 This module contains the models for the scripty api.
 """
 
-from enum import Enum
-from typing import List, Optional, Union
 import uuid
 from dataclasses import dataclass
 from pydantic import BaseModel, Field, ConfigDict
