@@ -1,7 +1,6 @@
 <style>
-code {
-    font-size: 13px;
-}
+pre[class*=language-]
+{font-size: 0.8em;} 
 </style>
 
 
