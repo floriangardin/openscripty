@@ -1,4 +1,4 @@
-<div style="font-size: 8px !important;">
+<div style="font-size: 8px !important;" markdown="1">
 
 bla 
 
