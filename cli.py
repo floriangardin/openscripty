@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Scripty CLI - Interactive command-line interface for Scripty AI.
+Maketools CLI - Interactive command-line interface for Maketools AI.
 """
 
 import asyncio
@@ -110,12 +110,12 @@ class Conversation:
     id: str
     user_prompt: str
     previous_response_id: Optional[str] = None
-    current_script_id: Optional[str] = None
+    current_tool_id: Optional[str] = None
     last_agent_name: Optional[str] = None    
 
 
-class ScriptyCompleter(Completer):
-    """Custom completer for Scripty CLI commands and file paths."""
+class MaketoolsCompleter(Completer):
+    """Custom completer for Maketools CLI commands and file paths."""
     
     def __init__(self, workspace_path: str = ".", cli_instance=None):
         self.workspace_path = workspace_path
@@ -200,7 +200,7 @@ class ScriptyCompleter(Completer):
                 pass
 
 
-class ScriptyCLI:
+class MaketoolsCLI:
     """Main CLI application class."""
     
     def __init__(self, base_url: str = "http://localhost:8000"):
@@ -209,26 +209,26 @@ class ScriptyCLI:
         self.current_conversation: Optional[Conversation] = None
         self.client = httpx.AsyncClient(timeout=60.0)
         self.workspace_path = "."
-        self.completer = ScriptyCompleter(self.workspace_path, self)
+        self.completer = MaketoolsCompleter(self.workspace_path, self)
         self._last_remote_files_update = 0
         
     def show_logo(self):
         """Display the welcome logo and instructions."""
         self.console.print("""
-[magenta]╔═══════════════════════════════════════════════════════════╗
-║                                                           ║
-║   [bold]███████╗ ██████╗██████╗ ██╗██████╗ ████████╗██╗   ██╗[/bold]   ║
-║   [bold]██╔════╝██╔════╝██╔══██╗██║██╔══██╗╚══██╔══╝╚██╗ ██╔╝[/bold]   ║
-║   [bold]███████╗██║     ██████╔╝██║██████╔╝   ██║    ╚████╔╝[/bold]    ║
-║   [bold]╚════██║██║     ██╔══██╗██║██╔═══╝    ██║     ╚██╔╝[/bold]     ║
-║   [bold]███████║╚██████╗██║  ██║██║██║        ██║      ██║[/bold]      ║
-║   [bold]╚══════╝ ╚═════╝╚═╝  ╚═╝╚═╝╚═╝        ╚═╝      ╚═╝[/bold]      ║
-║                                                           ║
-║             [cyan]Your AI-Powered Scripting Assistant[/cyan]           ║
-║                                                           ║
-╚═══════════════════════════════════════════════════════════╝[/magenta]
+[magenta]╔════════════════════════════════════════════════════════════════════════════════════╗
+║                                                                                    ║
+║ [bold]███╗   ███╗ █████╗ ██╗  ██╗███████╗████████╗ ██████╗  ██████╗ ██╗     ███████╗[/bold]     ║
+║ [bold]████╗ ████║██╔══██╗██║ ██╔╝██╔════╝╚══██╔══╝██╔═══██╗██╔═══██╗██║     ██╔════╝[/bold]     ║
+║ [bold]██╔████╔██║███████║█████╔╝ █████╗     ██║   ██║   ██║██║   ██║██║     ███████╗[/bold]     ║
+║ [bold]██║╚██╔╝██║██╔══██║██╔═██╗ ██╔══╝     ██║   ██║   ██║██║   ██║██║     ╚════██║[/bold]     ║
+║ [bold]██║ ╚═╝ ██║██║  ██║██║  ██╗███████╗   ██║   ╚██████╔╝╚██████╔╝███████╗███████║[/bold]     ║
+║ [bold]╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝   ╚═╝    ╚═════╝  ╚═════╝ ╚══════╝╚══════╝[/bold]     ║
+║                                                                                    ║
+║             [cyan]Your AI-Powered Tooling Assistant[/cyan]                                      ║
+║                                                                                    ║
+╚════════════════════════════════════════════════════════════════════════════════════╝[/magenta]
 
-[green]Welcome to Scripty CLI![/green]
+[green]Welcome to Maketools CLI![/green]
 
 [yellow]Available Commands:[/yellow]
   [cyan]/new[/cyan]        - Create a new conversation
@@ -255,7 +255,7 @@ class ScriptyCLI:
             conversations_data = response.json()
             return [Conversation(**conv) for conv in conversations_data]
         except httpx.RequestError as e:
-            self.console.print(f"[red]Error connecting to Scripty API: {e}[/red]")
+            self.console.print(f"[red]Error connecting to Maketools API: {e}[/red]")
             return []
         except Exception as e:
             self.console.print(f"[red]Error fetching conversations: {e}[/red]")
@@ -350,7 +350,7 @@ class ScriptyCLI:
             with open(file_path, 'rb') as f:
                 files = {'file': (os.path.basename(file_path), f, 'application/octet-stream')}
                 response = await self.client.post(
-                    f"{self.base_url}/scripts/local/upload",
+                    f"{self.base_url}/tools/local/upload",
                     files=files
                 )
                 response.raise_for_status()
@@ -362,7 +362,7 @@ class ScriptyCLI:
     async def list_files(self) -> bool:
         """List all files in the workspace."""
         try:
-            response = await self.client.get(f"{self.base_url}/scripts/local/files")
+            response = await self.client.get(f"{self.base_url}/tools/local/files")
             response.raise_for_status()
             files = response.json()
             
@@ -395,7 +395,7 @@ class ScriptyCLI:
             encoded_path = urllib.parse.quote(file_path, safe='')
             
             response = await self.client.delete(
-                f"{self.base_url}/scripts/local/files/{encoded_path}"
+                f"{self.base_url}/tools/local/files/{encoded_path}"
             )
             response.raise_for_status()
             return True
@@ -406,7 +406,7 @@ class ScriptyCLI:
     async def get_workspace_files(self) -> List[str]:
         """Get list of files in workspace (helper method)."""
         try:
-            response = await self.client.get(f"{self.base_url}/scripts/local/files")
+            response = await self.client.get(f"{self.base_url}/tools/local/files")
             response.raise_for_status()
             return response.json()
         except Exception:
@@ -526,7 +526,7 @@ class ScriptyCLI:
                                 # Update our local conversation object
                                 if isinstance(event_data, dict) and "id" in event_data:
                                     # Update conversation fields from the response
-                                    for field in ["previous_response_id", "current_script_id", "last_agent_name"]:
+                                    for field in ["previous_response_id", "current_tool_id", "last_agent_name"]:
                                         if field in event_data:
                                             setattr(self.current_conversation, field, event_data[field])
                             
@@ -606,7 +606,7 @@ class ScriptyCLI:
     def show_help(self):
         """Show help information."""
         self.console.print("""
-[green]Scripty CLI Help[/green]
+[green]tooly CLI Help[/green]
 
 [yellow]Commands:[/yellow]
   [cyan]/new[/cyan]        - Create a new conversation
@@ -629,8 +629,8 @@ class ScriptyCLI:
   • Use Ctrl+C to interrupt long operations
 
 [yellow]Examples:[/yellow]
-  "Create a Python script to parse @server.log"
-  "/upload data/server.log" (upload a file in scripty workspace, will be available as @server.log)
+  "Create a Python tool to parse @server.log"
+  "/upload data/server.log" (upload a file in tooly workspace, will be available as @server.log)
   "/state" (show current conversation info)
   "/new" (start fresh conversation)
 """)
@@ -655,9 +655,9 @@ class ScriptyCLI:
                 
                 # Create prompt string
                 if self.current_conversation:
-                    prompt_text = f"scripty:{self.current_conversation.id[:8]}> "
+                    prompt_text = f"maketools:{self.current_conversation.id[:8]}> "
                 else:
-                    prompt_text = f"scripty:new> "
+                    prompt_text = f"maketools:new> "
                 
                 user_input = (await safe_prompt(
                     prompt_text,
@@ -790,7 +790,7 @@ class ScriptyCLI:
 
 async def main():
     """Main entry point."""
-    cli = ScriptyCLI()
+    cli = MaketoolsCLI()
     await cli.run()
 
 
@@ -822,7 +822,7 @@ def run_cli():
             except Exception as e:
                 print(f"Error in CLI thread: {e}")
         
-        print("Starting Scripty CLI...")
+        print("Starting Maketools CLI...")
         thread = threading.Thread(target=run_in_thread)
         thread.daemon = True
         thread.start()
