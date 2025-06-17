@@ -1,8 +1,4 @@
-<style>
-pre[class*=language-]
-{font-size: 0.8em;} 
-</style>
-
+<div style="font-size: 13px;">
 
 ```
 
@@ -31,3 +27,5 @@ pre[class*=language-]
                                                                               
 
 ```
+
+</div>
