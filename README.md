@@ -1,4 +1,4 @@
-<div style="font-size: 8px !important;" markdown="1">
+<span style="font-size: 8px !important;" markdown="1">
 
 bla 
 
@@ -30,4 +30,4 @@ bla
 
 ```
 
-</div>
+</span>
