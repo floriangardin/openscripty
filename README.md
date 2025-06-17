@@ -1,4 +1,4 @@
-<div style="font-size: 10px !important;">
+<div style="font-size: 8px !important;">
 
 bla 
 
