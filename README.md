@@ -29,4 +29,37 @@
 
 </sub>
 
-<h1>Create & manage AI tools</h1>
+Create & manage tools with AI
+=============================
+
+🔧 Tools are the building blocks of AI applications. 
+
+MakeTools is the MCP to dynamically manage them. 
+
+💡 Create tools with AI
+🔍 Search for tools
+🔄 Execute tools
+🔄 Update tools
+🔄 View tool history
+
+
+
+Endpoints
+---------
+
+- Create a tool
+- List tools
+- Execute tool 
+
+
+
+
+
+Use cases
+---------- 
+
+Let's say you have a complex data cleaning operation that you will repeat on many files. 
+
+
+
+
