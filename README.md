@@ -2,7 +2,9 @@
 
 bla 
 
-<code>bla</code>
+<code style="font-size: 8px !important;">
+bla
+</code>
 
 ```
 
